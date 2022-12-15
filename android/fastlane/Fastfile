@@ -1,38 +1,43 @@
-# This file contains the fastlane.tools configuration
-# You can find the documentation at https://docs.fastlane.tools
-#
-# For a list of all available actions, check out
-#
-#     https://docs.fastlane.tools/actions
-#
-# For a list of all available plugins, check out
-#
-#     https://docs.fastlane.tools/plugins/available-plugins
-#
-
-# Uncomment the line if you want fastlane to automatically update itself
-# update_fastlane
-
-default_platform(:android)
-
-platform :android do
-  desc "Runs all the tests"
-  lane :test do
-    gradle(task: "test")
-  end
-
-  desc "Submit a new Beta Build to Crashlytics Beta"
-  lane :beta do
-    gradle(task: "clean assembleRelease")
-    crashlytics
-  
-    # sh "your_script.sh"
-    # You can also use other beta testing services here
-  end
-
-  desc "Deploy a new version to the Google Play"
-  lane :deploy do
-    gradle(task: "clean assembleRelease")
-    upload_to_play_store
-  end
-end
+name: Flutter CICD # action name
+on:
+push:
+tags:
+- “v*”
+jobs:
+build:
+runs-on: ubuntu-latest
+env:
+KEY_JKS: ${{ secrets.KEY_JKS }}
+KEY_PATH: “key.jks”
+KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+ALIAS_PASSWORD: ${{ secrets.ALIAS_PASSWORD }}
+steps:
+- uses: actions/checkout@v2
+- uses: actions/setup-java@v2
+with:
+distribution: ‘adopt’
+java-version: ‘12.x’
+- name: Create key file
+run: echo $KEY_JKS | base64 -di > key.jks
+- uses: subosito/flutter-action@v1
+with:
+flutter-version: ‘2.10.2’
+- run: flutter pub get
+- run: flutter build apk — release — split-per-abi
+- run: flutter build appbundle
+- name: Create github artifact release
+uses: ncipollo/release-action@v1
+with:
+artifacts: “build/app/outputs/apk/release/*.apk,build/app/outputs/bundle/release/app-release.aab”
+token: ${{ secrets.GITHUB_TOKEN }}
+commit:
+- name: Upload app bundle artifact
+uses: actions/upload-artifact@v2
+with:
+name: appbundle
+path: build/app/outputs/bundle/release/app-release.aab
+- name: Run Fastlane
+uses: maierj/fastlane-action@v1.4.0
+with:
+lane: upload_to_google_play_store
+subdirectory: android
